@@ -1,3 +1,7 @@
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from fastapi import Request
+
 from fastapi import FastAPI, File, UploadFile, Depends, Form
 from sqlalchemy.orm import Session
 from PIL import Image, ImageEnhance
@@ -23,9 +27,16 @@ class CompanyEnum(str, Enum):
     wolt = "Wolt"
     buyme = "BuyMe"
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Coupon Manager API!"}
+# Setup templates directory
+templates = Jinja2Templates(directory="templates")
+
+@app.get("/", response_class=HTMLResponse)
+async def view_coupons(request: Request, db: Session = Depends(get_db)):
+    # Fetch all active coupons from the database
+    coupons = db.query(models.Coupon).filter(models.Coupon.is_active == True).all()
+    
+    # Render the index.html template with the coupons data
+    return templates.TemplateResponse("index.html", {"request": request, "coupons": coupons})
 
 @app.post("/upload-coupon/")
 async def upload_coupon(
@@ -92,5 +103,25 @@ def get_coupons(db: Session = Depends(get_db)):
             "total_count": len(active_coupons),
             "coupons": active_coupons
         }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    
+
+
+# --- NEW ENDPOINT: Mark a coupon as used ---
+@app.post("/use-coupon/{coupon_id}")
+async def use_coupon(coupon_id: int, db: Session = Depends(get_db)):
+    try:
+        # Find the coupon by ID
+        coupon = db.query(models.Coupon).filter(models.Coupon.id == coupon_id).first()
+        
+        if not coupon:
+            return {"status": "error", "message": "Coupon not found"}
+            
+        # Update status to inactive
+        coupon.is_active = False
+        db.commit()
+        
+        return {"status": "success", "message": "Coupon marked as used!"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
