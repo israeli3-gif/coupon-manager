@@ -19,6 +19,8 @@
         <div class="text-center mb-4">
             <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#recommendModal">Smart Checkout (Recommend Coupons)</button>
         </div>
+
+        
         
         <div class="row" id="coupon-list">
             {% for coupon in coupons %}
@@ -44,6 +46,42 @@
 
         <div class="fixed-bottom p-4 text-end">
             <button class="btn btn-primary rounded-circle shadow-lg fab" data-bs-toggle="modal" data-bs-target="#uploadModal">+</button>
+        </div>
+    </div>
+
+    
+    <div class="modal fade" id="recommendModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Smart Checkout Calculator</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="recommendForm">
+                        <div class="mb-3">
+                            <label class="form-label">Company</label>
+                            <select class="form-select" id="recCompany" required>
+                                <option value="Shufersal">Shufersal</option>
+                                <option value="Victory">Victory</option>
+                                <option value="Wolt">Wolt</option>
+                                <option value="BuyMe">BuyMe</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Bill Amount (NIS)</label>
+                            <input type="number" class="form-control" id="recAmount" required step="0.1" min="0.1">
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Find Best Coupons</button>
+                    </form>
+                    
+                    <div id="recommendResults" class="mt-4" style="display: none;">
+                        <h6 class="fw-bold border-bottom pb-2">Recommended Coupons:</h6>
+                        <ul id="recommendedList" class="list-group mb-2"></ul>
+                        <div class="alert alert-info" id="recommendSummary"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -115,6 +153,53 @@
                 submitBtn.disabled = false;
             }
         };
+
+
+        // Recommend Coupons Logic
+        document.getElementById('recommendForm').onsubmit = async (e) => {
+            e.preventDefault();
+            
+            const company = document.getElementById('recCompany').value;
+            const amount = document.getElementById('recAmount').value;
+            const resultsDiv = document.getElementById('recommendResults');
+            const listDiv = document.getElementById('recommendedList');
+            const summaryDiv = document.getElementById('recommendSummary');
+            
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.innerText = "Calculating...";
+            submitBtn.disabled = true;
+
+            try {
+                // Call our new API endpoint
+                const response = await fetch(`/recommend-coupons/?company=${company}&bill_amount=${amount}`);
+                const result = await response.json();
+                
+                listDiv.innerHTML = ""; // Clear previous results
+                resultsDiv.style.display = "block"; // Show the results area
+                
+                if (result.status === 'success' && result.coupons.length > 0) {
+                    // Display each recommended coupon
+                    result.coupons.forEach(c => {
+                        const li = document.createElement('li');
+                        li.className = "list-group-item d-flex justify-content-between align-items-center";
+                        li.innerHTML = `Barcode: ${c.barcode} <span class="badge bg-success rounded-pill">${c.amount} NIS</span>`;
+                        listDiv.appendChild(li);
+                    });
+                    summaryDiv.className = "alert alert-success mt-2";
+                    summaryDiv.innerText = `Total Coupon Value: ${result.total_value} NIS`;
+                } else {
+                    // No coupons found case
+                    summaryDiv.className = "alert alert-warning mt-2";
+                    summaryDiv.innerText = "No relevant coupons found for this amount.";
+                }
+            } catch (error) {
+                alert("Error fetching recommendations.");
+            }
+            
+            submitBtn.innerText = "Find Best Coupons";
+            submitBtn.disabled = false;
+        };
+
     </script>
 </body>
 </html>
