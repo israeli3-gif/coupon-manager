@@ -125,3 +125,59 @@ async def use_coupon(coupon_id: int, db: Session = Depends(get_db)):
         return {"status": "success", "message": "Coupon marked as used!"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+from fastapi import Query
+
+# --- NEW ENDPOINT: Algorithm to recommend optimal coupons ---
+@app.get("/recommend-coupons/")
+def recommend_coupons(
+    company: str,
+    bill_amount: float = Query(..., gt=0),
+    db: Session = Depends(get_db)
+):
+    try:
+        # 1. Fetch all active coupons for the requested company
+        available_coupons = db.query(models.Coupon).filter(
+            models.Coupon.company == company,
+            models.Coupon.is_active == True
+        ).all()
+
+        # 2. Dynamic Programming approach (0/1 Knapsack variation)
+        # dp dictionary format -> current_sum: (number_of_coupons, [list_of_coupon_ids])
+        dp = {0.0: (0, [])}
+
+        for coupon in available_coupons:
+            current_dp = dict(dp) # Copy to prevent updating the dictionary while iterating
+            for current_sum, (count, used_ids) in current_dp.items():
+                # Calculate new sum and round to 2 decimals to avoid Python float precision issues
+                new_sum = round(current_sum + coupon.amount, 2)
+                
+                # Rule 1: We cannot exceed the bill amount
+                if new_sum <= bill_amount:
+                    new_count = count + 1
+                    
+                    # Rule 2 & 3: Add to dp if it's a new sum, OR if we reached this sum with FEWER coupons
+                    if new_sum not in dp or dp[new_sum][0] > new_count:
+                        dp[new_sum] = (new_count, used_ids + [coupon.id])
+
+        # 3. Find the best result
+        max_sum = max(dp.keys())
+        
+        # If the max sum is 0, it means all coupons are bigger than the bill
+        if max_sum == 0.0:
+            return {"status": "success", "message": "No relevant coupons found for this amount.", "coupons": []}
+
+        # Retrieve the winning coupon IDs
+        best_coupon_ids = dp[max_sum][1]
+        
+        # Get the actual coupon objects to return to the user
+        recommended = [c for c in available_coupons if c.id in best_coupon_ids]
+        
+        return {
+            "status": "success",
+            "total_value": max_sum,
+            "coupons": recommended
+        }
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
