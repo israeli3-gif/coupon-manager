@@ -10,6 +10,8 @@ import zxingcpp
 from datetime import datetime, timedelta
 from enum import Enum  # <--- Added Enum import
 
+from sqlalchemy import func
+
 # Import our database and models
 from database import engine, Base, get_db
 import models
@@ -118,8 +120,9 @@ async def use_coupon(coupon_id: int, db: Session = Depends(get_db)):
         if not coupon:
             return {"status": "error", "message": "Coupon not found"}
             
-        # Update status to inactive
+        # Update status to inactive + set used_date
         coupon.is_active = False
+        coupon.used_date = datetime.now()
         db.commit()
         
         return {"status": "success", "message": "Coupon marked as used!"}
@@ -179,5 +182,37 @@ def recommend_coupons(
             "coupons": recommended
         }
         
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# --- NEW ENDPOINT: Statistics Dashboard ---
+@app.get("/api/stats")
+def get_statistics(db: Session = Depends(get_db)):
+    try:
+        # 1. Total value of active coupons
+        total_value = db.query(func.sum(models.Coupon.amount)).filter(models.Coupon.is_active == True).scalar() or 0.0
+        
+        # 2. Total count of active coupons
+        active_count = db.query(models.Coupon).filter(models.Coupon.is_active == True).count()
+        
+        # 3. Total count of used coupons
+        used_count = db.query(models.Coupon).filter(models.Coupon.is_active == False).count()
+        
+        # 4. Group by company (for the Pie Chart)
+        company_stats = db.query(
+            models.Coupon.company, 
+            func.sum(models.Coupon.amount), 
+            func.count(models.Coupon.id)
+        ).filter(models.Coupon.is_active == True).group_by(models.Coupon.company).all()
+
+        companies_data = [{"name": c[0], "total_amount": round(c[1], 2), "count": c[2]} for c in company_stats]
+
+        return {
+            "status": "success",
+            "total_active_value": round(total_value, 2),
+            "active_count": active_count,
+            "used_count": used_count,
+            "by_company": companies_data
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}
