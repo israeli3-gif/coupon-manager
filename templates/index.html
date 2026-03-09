@@ -27,7 +27,7 @@
             <button class="btn btn-sm btn-outline-success" onclick="clearFilter()">Clear Filter</button>
         </div>
 
-        <div class="row" id="coupon-list">
+        <div class="row pb-5 mb-5" id="coupon-list" style="padding-bottom: 100px;">
             {% for coupon in coupons %}
             <div class="col-md-6 coupon-wrapper" id="wrapper-{{ coupon.id }}">
                 <div class="card coupon-card">
@@ -56,30 +56,36 @@
 
     
     <div class="modal fade" id="statsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title">My Dashboard</h5>
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-0">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title fw-bold">My Dashboard</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="row text-center mb-4">
-                        <div class="col-4">
-                            <h6 class="text-muted mb-1">Total Value</h6>
-                            <h4 class="text-success fw-bold" id="statTotalValue">0₪</h4>
-                        </div>
-                        <div class="col-4">
-                            <h6 class="text-muted mb-1">Active</h6>
-                            <h4 class="text-primary fw-bold" id="statActiveCount">0</h4>
-                        </div>
-                        <div class="col-4">
-                            <h6 class="text-muted mb-1">Used</h6>
-                            <h4 class="text-danger fw-bold" id="statUsedCount">0</h4>
+                <div class="modal-body bg-light">
+                    
+                    <div class="card shadow-sm mb-4 border-0">
+                        <div class="card-body">
+                            <h6 class="card-title fw-bold border-bottom pb-2">Available Coupons (Value & Count)</h6>
+                            <canvas id="availableChart" height="120"></canvas>
                         </div>
                     </div>
-                    <hr>
-                    <h6 class="text-center fw-bold mb-3">Value by Network</h6>
-                    <canvas id="companyChart" width="400" height="250"></canvas>
+
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                                <h6 class="card-title fw-bold mb-0">Usage History (Value)</h6>
+                                <select id="timeFilter" class="form-select form-select-sm w-auto" onchange="loadStats()">
+                                    <option value="7" selected>Last 7 Days</option>
+                                    <option value="30">Last Month</option>
+                                    <option value="180">Last 6 Months</option>
+                                    <option value="all">All Time</option>
+                                </select>
+                            </div>
+                            <canvas id="historyChart" height="150"></canvas>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>
@@ -253,49 +259,66 @@
         };
 
         // --- Statistics & Chart Logic ---
-        let myChart = null; // Keep track of the chart instance
+        // --- Statistics & Dual Charts Logic ---
+        let availableChartInst = null;
+        let historyChartInst = null;
 
         async function loadStats() {
             try {
-                const response = await fetch('/api/stats');
+                // Get the selected time period (default is 7)
+                const period = document.getElementById('timeFilter').value;
+                const response = await fetch(`/api/stats?period=${period}`);
                 const data = await response.json();
                 
                 if (data.status === 'success') {
-                    // Update text summaries
-                    document.getElementById('statTotalValue').innerText = data.total_active_value + '₪';
-                    document.getElementById('statActiveCount').innerText = data.active_count;
-                    document.getElementById('statUsedCount').innerText = data.used_count;
-
-                    // Prepare data for the pie chart
-                    const labels = data.by_company.map(c => c.name);
-                    const values = data.by_company.map(c => c.total_amount);
                     
-                    // Chart colors
-                    const backgroundColors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'];
-
-                    const ctx = document.getElementById('companyChart').getContext('2d');
+                    // --- 1. Available Coupons Chart (Bar) ---
+                    const ctxAvail = document.getElementById('availableChart').getContext('2d');
+                    if (availableChartInst) availableChartInst.destroy();
                     
-                    // Destroy previous chart if it exists so we can redraw it
-                    if (myChart != null) {
-                        myChart.destroy();
-                    }
-
-                    // Draw the new Pie Chart
-                    myChart = new Chart(ctx, {
-                        type: 'doughnut',
+                    const availLabels = data.available.map(d => `${d.company} (${d.count})`);
+                    const availValues = data.available.map(d => d.total_amount);
+                    
+                    availableChartInst = new Chart(ctxAvail, {
+                        type: 'bar',
                         data: {
-                            labels: labels,
+                            labels: availLabels,
                             datasets: [{
-                                data: values,
-                                backgroundColor: backgroundColors,
-                                hoverOffset: 4
+                                label: 'Total Value (NIS)',
+                                data: availValues,
+                                backgroundColor: '#198754', // Green
+                                borderRadius: 4
                             }]
                         },
                         options: {
                             responsive: true,
-                            plugins: {
-                                legend: { position: 'bottom' }
-                            }
+                            plugins: { legend: { display: false } },
+                            scales: { y: { beginAtZero: true } }
+                        }
+                    });
+
+                    // --- 2. History Coupons Chart (Doughnut) ---
+                    const ctxHist = document.getElementById('historyChart').getContext('2d');
+                    if (historyChartInst) historyChartInst.destroy();
+
+                    const histLabels = data.history.map(d => d.company);
+                    const histValues = data.history.map(d => d.total_amount);
+                    
+                    // UX Detail: Show a grey empty circle if there is no history for this period
+                    const hasData = histValues.length > 0;
+                    
+                    historyChartInst = new Chart(ctxHist, {
+                        type: 'doughnut',
+                        data: {
+                            labels: hasData ? histLabels : ['No Activity'],
+                            datasets: [{
+                                data: hasData ? histValues : [1],
+                                backgroundColor: hasData ? ['#FF6384', '#36A2EB', '#FFCE56', '#9966FF'] : ['#e9ecef']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: { legend: { position: 'right' } }
                         }
                     });
                 }
@@ -303,7 +326,6 @@
                 console.error("Error loading stats:", error);
             }
         }
-        
     </script>
 </body>
 </html>

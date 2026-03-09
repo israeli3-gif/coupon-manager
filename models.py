@@ -8,6 +8,7 @@ class Coupon(Base):
     id = Column(Integer, primary_key=True, index=True)
     barcode = Column(String, unique=True, index=True)
     amount = Column(Float)
+    used_date = Column(DateTime, nullable=True)
     
     # Changed from network to company!
     company = Column(String, index=True) 

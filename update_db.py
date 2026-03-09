@@ -1,21 +1,17 @@
 import sqlite3
-from datetime import datetime
 
-# מתחברים למסד הנתונים הקיים
+# מתחברים למסד הנתונים
 conn = sqlite3.connect('coupons.db')
 cursor = conn.cursor()
 
-try:
-    # 1. מוסיפים את העמודה החדשה לטבלה
-    cursor.execute("ALTER TABLE coupons ADD COLUMN used_date DATETIME")
-    print("Column 'used_date' added successfully.")
-except Exception as e:
-    print("Note:", e)
+# מעדכנים את כל הרשתות לפורמט התקין (ה-Enum שלנו)
+cursor.execute("UPDATE coupons SET company = 'Shufersal' WHERE company = 'shufersal'")
+cursor.execute("UPDATE coupons SET company = 'Victory' WHERE company = 'victory'")
+cursor.execute("UPDATE coupons SET company = 'Wolt' WHERE company = 'wolt'")
+cursor.execute("UPDATE coupons SET company = 'BuyMe' WHERE company = 'buyme'")
 
-# 2. מעדכנים את כל הקופונים שכבר נוצלו (is_active = 0) לתאריך של היום
-now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-cursor.execute(f"UPDATE coupons SET used_date = '{now_str}' WHERE is_active = 0")
-
+# שומרים את השינויים וסוגרים
 conn.commit()
 conn.close()
-print("Database updated! Old used coupons are set to today.")
+
+print("Data cleansing complete! All companies are now capitalized correctly.")

@@ -185,34 +185,44 @@ def recommend_coupons(
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# --- NEW ENDPOINT: Statistics Dashboard ---
+# --- UPDATED ENDPOINT: Statistics Dashboard ---
 @app.get("/api/stats")
-def get_statistics(db: Session = Depends(get_db)):
+def get_statistics(period: str = "7", db: Session = Depends(get_db)):
     try:
-        # 1. Total value of active coupons
-        total_value = db.query(func.sum(models.Coupon.amount)).filter(models.Coupon.is_active == True).scalar() or 0.0
-        
-        # 2. Total count of active coupons
-        active_count = db.query(models.Coupon).filter(models.Coupon.is_active == True).count()
-        
-        # 3. Total count of used coupons
-        used_count = db.query(models.Coupon).filter(models.Coupon.is_active == False).count()
-        
-        # 4. Group by company (for the Pie Chart)
-        company_stats = db.query(
+        # 1. Available Coupons (Grouped by company)
+        active_stats = db.query(
             models.Coupon.company, 
-            func.sum(models.Coupon.amount), 
-            func.count(models.Coupon.id)
+            func.sum(models.Coupon.amount).label("total_amount"), 
+            func.count(models.Coupon.id).label("count")
         ).filter(models.Coupon.is_active == True).group_by(models.Coupon.company).all()
 
-        companies_data = [{"name": c[0], "total_amount": round(c[1], 2), "count": c[2]} for c in company_stats]
+        available_data = [
+            {"company": row[0], "total_amount": round(row[1], 2), "count": row[2]} 
+            for row in active_stats if row[2] > 0
+        ]
+
+        # 2. History Coupons (Filtered by time period)
+        history_query = db.query(
+            models.Coupon.company, 
+            func.sum(models.Coupon.amount).label("total_amount")
+        ).filter(models.Coupon.is_active == False)
+
+        if period != "all":
+            days = int(period)
+            cutoff_date = datetime.now() - timedelta(days=days)
+            history_query = history_query.filter(models.Coupon.used_date >= cutoff_date)
+
+        history_stats = history_query.group_by(models.Coupon.company).all()
+
+        history_data = [
+            {"company": row[0], "total_amount": round(row[1], 2)} 
+            for row in history_stats if row[1] is not None and row[1] > 0
+        ]
 
         return {
             "status": "success",
-            "total_active_value": round(total_value, 2),
-            "active_count": active_count,
-            "used_count": used_count,
-            "by_company": companies_data
+            "available": available_data,
+            "history": history_data
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
