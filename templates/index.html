@@ -21,10 +21,14 @@
         </div>
 
         
-        
+        <div id="filterSummary" class="alert alert-success mb-4 justify-content-between align-items-center d-none">
+            <span id="filterText"></span>
+            <button class="btn btn-sm btn-outline-success" onclick="clearFilter()">Clear Filter</button>
+        </div>
+
         <div class="row" id="coupon-list">
             {% for coupon in coupons %}
-            <div class="col-md-6">
+            <div class="col-md-6 coupon-wrapper" id="wrapper-{{ coupon.id }}">
                 <div class="card coupon-card">
                     <div class="card-body text-center">
                         <h5 class="card-title">{{ coupon.company }}</h5>
@@ -155,42 +159,57 @@
         };
 
 
-        // Recommend Coupons Logic
+        // --- NEW: Clear Filter Function ---
+        function clearFilter() {
+            // Show all coupons
+            document.querySelectorAll('.coupon-wrapper').forEach(el => el.style.display = 'block');
+            // Hide the filter banner
+            const filterSummary = document.getElementById('filterSummary');
+            filterSummary.classList.remove('d-flex');
+            filterSummary.classList.add('d-none');
+        }
+
+        // --- UPDATED: Recommend Coupons Logic ---
         document.getElementById('recommendForm').onsubmit = async (e) => {
             e.preventDefault();
             
             const company = document.getElementById('recCompany').value;
             const amount = document.getElementById('recAmount').value;
-            const resultsDiv = document.getElementById('recommendResults');
-            const listDiv = document.getElementById('recommendedList');
-            const summaryDiv = document.getElementById('recommendSummary');
-            
             const submitBtn = e.target.querySelector('button[type="submit"]');
+            
             submitBtn.innerText = "Calculating...";
             submitBtn.disabled = true;
 
             try {
-                // Call our new API endpoint
                 const response = await fetch(`/recommend-coupons/?company=${company}&bill_amount=${amount}`);
                 const result = await response.json();
                 
-                listDiv.innerHTML = ""; // Clear previous results
-                resultsDiv.style.display = "block"; // Show the results area
-                
                 if (result.status === 'success' && result.coupons.length > 0) {
-                    // Display each recommended coupon
-                    result.coupons.forEach(c => {
-                        const li = document.createElement('li');
-                        li.className = "list-group-item d-flex justify-content-between align-items-center";
-                        li.innerHTML = `Barcode: ${c.barcode} <span class="badge bg-success rounded-pill">${c.amount} NIS</span>`;
-                        listDiv.appendChild(li);
+                    // 1. Get IDs of recommended coupons
+                    const recommendedIds = result.coupons.map(c => c.id);
+                    
+                    // 2. Hide all coupons, then show only the recommended ones
+                    document.querySelectorAll('.coupon-wrapper').forEach(el => {
+                        const couponId = parseInt(el.id.replace('wrapper-', ''));
+                        if (recommendedIds.includes(couponId)) {
+                            el.style.display = 'block'; // Show
+                        } else {
+                            el.style.display = 'none'; // Hide
+                        }
                     });
-                    summaryDiv.className = "alert alert-success mt-2";
-                    summaryDiv.innerText = `Total Coupon Value: ${result.total_value} NIS`;
+
+                    // 3. Show the filter summary banner
+                    const filterSummary = document.getElementById('filterSummary');
+                    document.getElementById('filterText').innerHTML = `<strong>Smart Checkout:</strong> Showing optimal coupons for ${amount} NIS at ${company}.<br>Total Value to Scan: <strong>${result.total_value} NIS</strong>`;
+                    filterSummary.classList.remove('d-none');
+                    filterSummary.classList.add('d-flex');
+
+                    // 4. Close the modal automatically
+                    const modalInstance = bootstrap.Modal.getInstance(document.getElementById('recommendModal'));
+                    modalInstance.hide();
+                    
                 } else {
-                    // No coupons found case
-                    summaryDiv.className = "alert alert-warning mt-2";
-                    summaryDiv.innerText = "No relevant coupons found for this amount.";
+                    alert("No relevant coupons found for this amount.");
                 }
             } catch (error) {
                 alert("Error fetching recommendations.");
@@ -199,7 +218,6 @@
             submitBtn.innerText = "Find Best Coupons";
             submitBtn.disabled = false;
         };
-
     </script>
 </body>
 </html>
